@@ -22,7 +22,7 @@ export default function AppHeader() {
     const token = localStorage.getItem("pixel-token");
     if (!token) return;
 
-    fetch("http://pixel-money.koyeb.app/auth/me", {
+    fetch("https://pixel-money.koyeb.app/auth/me", {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => (res.ok ? res.json() : Promise.reject("Unauthorized")))
