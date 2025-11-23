@@ -1,80 +1,118 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import ExternalTransferModal from './ExternalTransferModal';
+import { User, Lock, Bell, Eye, Settings, Shield, Mail, Phone, AlertTriangle } from 'lucide-react';
+import UserProfileSection from './UserProfileSection';
+import SecuritySettings from './SecuritySettings';
+import NotificationSettings from './NotificationSettings';
+import PrivacySettings from './PrivacySettings';
+import { useNotification } from '../../contexts/NotificationContext'; // 👈 Ajusta ruta
+import { apiClient } from '../../lib/api'; // 👈 Usamos apiClient
 
-export default function TransactionsPage() {
-  const [showModal, setShowModal] = useState(false);
-  const [userIdentifier, setUserIdentifier] = useState<string>(""); 
-  const [loadingUser, setLoadingUser] = useState(true);
+interface UserData {
+  id: number;
+  name: string;
+  email: string;
+  phone_number: string;
+}
+
+export default function ConfiguracionPage() {
+  const [activeTab, setActiveTab] = useState('perfil');
+  const [userData, setUserData] = useState<UserData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { showNotification } = useNotification();
+
+  const fetchUserData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      // 👇 ¡MIRA QUÉ LIMPIO! Una sola línea reemplaza todo el bloque anterior
+      const data: any = await apiClient.get('/auth/me');
+      
+      setUserData(data);
+      // showNotification('Datos cargados', 'success'); // Opcional
+    } catch (err: any) {
+      console.error(err);
+      setError('No se pudo cargar la información del usuario.');
+      if (err.message?.includes('401')) {
+         // Si el token expiró, el apiClient o el usuario lo manejarán
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUser = async () => {
-      try {
-        // CONEXIÓN DIRECTA (Sin importar nada externo para evitar errores)
-        const API_URL = 'https://auth-microservice-vxcl.onrender.com';
-        const token = typeof window !== 'undefined' ? localStorage.getItem('pixel-token') : null;
-
-        const response = await fetch(`${API_URL}/auth/me`, {
-           headers: {
-             'Content-Type': 'application/json',
-             ...(token && { 'Authorization': `Bearer ${token}` }),
-           }
-        });
-        
-        if (response.ok) {
-           const data = await response.json();
-           if (data?.phone_number) {
-               setUserIdentifier(data.phone_number);
-           }
-        }
-      } catch (error) {
-        console.error("Error identificando usuario", error);
-      } finally {
-        setLoadingUser(false);
-      }
-    };
-
-    fetchUser();
+    fetchUserData();
   }, []);
 
+  const tabs = [
+    { id: 'perfil', label: 'Perfil', icon: <User className="w-5 h-5" />, description: 'Gestiona tu información personal' },
+    { id: 'seguridad', label: 'Seguridad', icon: <Lock className="w-5 h-5" />, description: 'Contraseñas y autenticación' },
+    { id: 'notificaciones', label: 'Notificaciones', icon: <Bell className="w-5 h-5" />, description: 'Preferencias de notificaciones' },
+    { id: 'privacidad', label: 'Privacidad', icon: <Eye className="w-5 h-5" />, description: 'Controla tu privacidad' },
+  ];
+
+  if (loading && !userData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="p-6 text-white min-h-screen">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Mis Transacciones</h1>
-          <p className="text-gray-400 text-sm">Gestiona tus movimientos y transferencias</p>
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-6">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="mb-12 text-center">
+          <h1 className="text-4xl font-light text-slate-800 dark:text-white mb-4">Configuración</h1>
+          
+          {/* Tarjeta Usuario */}
+          {userData && (
+            <div className="inline-flex items-center gap-4 bg-white dark:bg-slate-800 px-6 py-4 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700">
+              <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center text-white">
+                <User />
+              </div>
+              <div className="text-left">
+                <p className="font-bold text-slate-800 dark:text-white">{userData.name}</p>
+                <p className="text-sm text-slate-500">{userData.email}</p>
+              </div>
+            </div>
+          )}
         </div>
-        
-        <button 
-          onClick={() => setShowModal(true)}
-          disabled={loadingUser || !userIdentifier}
-          className={`font-bold py-2.5 px-5 rounded-lg transition-all flex items-center gap-2 shadow-lg ${
-            loadingUser || !userIdentifier
-              ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-900/20 active:scale-95'
-          }`}
-        >
-          <span className="text-xl">💸</span> 
-          <span>{loadingUser ? 'Cargando...' : 'Nueva Transferencia'}</span>
-        </button>
-      </div>
 
-      <div className="bg-[#1a1a1a] p-10 rounded-xl border border-gray-800 text-gray-500 text-center flex flex-col items-center justify-center">
-        <div className="w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mb-4 text-3xl opacity-50">
-          📊
+        <div className="flex flex-col lg:flex-row gap-8">
+          {/* Sidebar Tabs */}
+          <div className="lg:w-64 flex-shrink-0 space-y-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full text-left p-4 rounded-xl transition-all flex items-center gap-3 ${
+                  activeTab === tab.id
+                    ? 'bg-sky-500 text-white shadow-md'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700'
+                }`}
+              >
+                {tab.icon}
+                <span className="font-medium">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Contenido */}
+          <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-sm border border-slate-200 dark:border-slate-700">
+            {activeTab === 'perfil' && userData && (
+              <UserProfileSection userData={userData} onUpdate={fetchUserData} />
+            )}
+            {activeTab === 'seguridad' && <SecuritySettings />}
+            {activeTab === 'notificaciones' && <NotificationSettings />}
+            {activeTab === 'privacidad' && <PrivacySettings />}
+          </div>
         </div>
-        <p className="text-lg font-medium text-gray-300">Historial de Movimientos</p>
-        <p className="text-sm max-w-sm mt-1">
-          Aquí aparecerá tu lista de transacciones recientes.
-        </p>
       </div>
-
-      <ExternalTransferModal 
-        isOpen={showModal} 
-        onClose={() => setShowModal(false)}
-        currentUserIdentifier={userIdentifier}
-      />
     </div>
   );
 }

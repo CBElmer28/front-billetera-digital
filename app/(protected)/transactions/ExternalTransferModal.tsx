@@ -29,7 +29,7 @@ export default function ExternalTransferModal({
 
   const [formData, setFormData] = useState({
     toIdentifier: '',
-    toAppName: AVAILABLE_APPS[0].id,
+    toAppName: AVAILABLE_APPS[0].id, // Por defecto LUCA
     amount: '',
   });
 
@@ -45,7 +45,6 @@ export default function ExternalTransferModal({
     setLoading(true);
     setError(null);
 
-    // Validaciones
     if (!formData.toIdentifier || formData.toIdentifier.length < 9) {
       setError("El identificador debe tener al menos 9 caracteres.");
       setLoading(false);
@@ -60,22 +59,29 @@ export default function ExternalTransferModal({
     }
 
     try {
+      // Generamos ID único para la transacción (Requisito de la API)
+      const uniqueTxId = `TX${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
       const payload = {
         fromIdentifier: currentUserIdentifier,
         toIdentifier: formData.toIdentifier,
         toAppName: formData.toAppName,
-        amount: amountVal
+        amount: amountVal,
+        externalTransactionId: uniqueTxId
       };
 
-      // LÓGICA DIRECTA (Sin dependencias externas)
-      const API_URL = 'https://auth-microservice-vxcl.onrender.com';
-      const token = typeof window !== 'undefined' ? localStorage.getItem('pixel-token') : null;
+      console.log("🚀 Enviando a API Central:", payload);
 
-      const response = await fetch(`${API_URL}/sendTransfer`, {
+      // URL de la API Centralizada
+      const API_URL = 'https://centralized-wallet-api-production.up.railway.app/api/v1/sendTransfer';
+      const userToken = typeof window !== 'undefined' ? localStorage.getItem('pixel-token') : '';
+
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(token && { 'Authorization': `Bearer ${token}` }),
+          'x-wallet-token': 'pixel-token',       // Header requerido
+          'Authorization': `Bearer ${userToken}` // Token del usuario
         },
         body: JSON.stringify(payload),
       });
@@ -83,7 +89,7 @@ export default function ExternalTransferModal({
       const data = await response.json();
 
       if (!response.ok) {
-        let errorMessage = data.detail || data.message || "Error desconocido";
+        let errorMessage = data.message || data.detail || "Error desconocido";
         if (Array.isArray(errorMessage)) {
              errorMessage = errorMessage.map((err: any) => `${err.msg}`).join(', ');
         }
@@ -95,12 +101,12 @@ export default function ExternalTransferModal({
       setTimeout(() => {
         setSuccess(false);
         onClose();
-        window.location.reload(); // Recarga la página para ver el nuevo saldo
+        window.location.reload(); // Recarga la página
       }, 2000);
 
     } catch (err: any) {
       console.error("Error API:", err);
-      setError(err.message || "Error al realizar la transferencia.");
+      setError(err.message || "Ocurrió un error al conectar con la API Central.");
     } finally {
       setLoading(false);
     }
@@ -123,7 +129,7 @@ export default function ExternalTransferModal({
                 </svg>
               </div>
               <h4 className="text-xl font-bold text-white mb-2">¡Envío Exitoso!</h4>
-              <p className="text-gray-400">Tu dinero ha sido enviado correctamente.</p>
+              <p className="text-gray-400">Transferencia realizada correctamente.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
@@ -160,7 +166,7 @@ export default function ExternalTransferModal({
               <div className="space-y-2">
                 <label className="text-sm text-gray-400 font-medium">Monto</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">$</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">S/</span>
                   <input
                     type="number"
                     name="amount"
@@ -168,7 +174,7 @@ export default function ExternalTransferModal({
                     placeholder="0.00"
                     value={formData.amount}
                     onChange={handleChange}
-                    className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 pl-8 text-lg font-medium focus:border-green-500 outline-none transition-all"
+                    className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 pl-10 text-lg font-medium focus:border-green-500 outline-none transition-all"
                     required
                   />
                 </div>
