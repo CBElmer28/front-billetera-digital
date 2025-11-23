@@ -1,4 +1,4 @@
-const API_BASE_URL = 'https://localhost:8080'; // 👈 CORREGIDO: Apunta al Gateway
+const API_BASE_URL = 'https://pixel-money.koyeb.app'; // 👈 CORREGIDO: Apunta al Gateway
 
 // lib/api.ts
 
