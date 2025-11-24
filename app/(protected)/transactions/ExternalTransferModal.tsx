@@ -1,6 +1,8 @@
 'use client';
 
 import { useState } from 'react';
+import { v4 as uuidv4 } from 'uuid'; 
+import { apiClient } from '../../lib/api'; // Importamos tu cliente API optimizado
 
 const AVAILABLE_APPS = [
   { id: 'LUCA', name: 'Billetera Luca' },
@@ -27,10 +29,12 @@ export default function ExternalTransferModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
+  // Estado del formulario adaptado a tu JSON deseado
   const [formData, setFormData] = useState({
-    toIdentifier: '',
-    toAppName: AVAILABLE_APPS[0].id,
-    amount: '',
+    toAppName: AVAILABLE_APPS[0].id, // Se mapeará a "to_bank"
+    toIdentifier: '',                // Se mapeará a "destination_phone_number"
+    amount: '',                      // Se mapeará a "amount"
+    description: ''                  // Se mapeará a "description"
   });
 
   if (!isOpen) return null;
@@ -45,68 +49,63 @@ export default function ExternalTransferModal({
     setLoading(true);
     setError(null);
 
+    // 1. Validaciones
     if (!formData.toIdentifier || formData.toIdentifier.length < 9) {
-      setError("El identificador debe tener al menos 9 caracteres.");
+      setError("El número de celular debe tener al menos 9 dígitos.");
       setLoading(false);
       return;
     }
     
     const amountVal = parseFloat(formData.amount);
-    // 2. VALIDACIÓN CLAVE: Bloquea montos menores o iguales a cero (SOLO POSITIVOS)
     if (isNaN(amountVal) || amountVal <= 0) {
       setError("El monto debe ser mayor a 0.");
       setLoading(false);
       return;
     }
 
-    try {
-      // Generamos ID único de transacción para Pixel Money
-      const uniqueTxId = `TX${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    if (!formData.description.trim()) {
+      setError("Por favor ingresa una descripción para la transferencia.");
+      setLoading(false);
+      return;
+    }
 
+    try {
+      // 2. Construcción del Payload EXACTO solicitado
       const payload = {
-        fromIdentifier: currentUserIdentifier,
-        toIdentifier: formData.toIdentifier,
-        toAppName: formData.toAppName,
+        to_bank: formData.toAppName,
+        destination_phone_number: formData.toIdentifier,
         amount: amountVal,
-        externalTransactionId: uniqueTxId
+        description: formData.description
       };
 
-      console.log("🚀 Enviando a API Central:", payload);
+      const idempotencyKey = uuidv4();
 
-      // URL de la API Centralizada (Railway)
-      const API_URL = 'https://centralized-wallet-api-production.up.railway.app/api/v1/sendTransfer';
-      const userToken = typeof window !== 'undefined' ? localStorage.getItem('pixel-token') : '';
+      console.log("🚀 Enviando a Gateway (/ledger/transfer-central):", payload);
 
-      const response = await fetch(API_URL, {
+      // 3. Llamada usando apiClient
+      // El apiClient añadirá automáticamente:
+      // - Content-Type: application/json
+      // - Authorization: Bearer <token del localStorage>
+      await apiClient.request('/ledger/transfer-central', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-wallet-token': 'pixel-token',
-          'Authorization': `Bearer ${userToken}`
-        },
         body: JSON.stringify(payload),
+        headers: {
+          'Idempotency-Key': idempotencyKey // Header extra para seguridad
+        }
       });
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        let errorMessage = data.message || data.detail || "Error desconocido en la transferencia";
-        if (Array.isArray(errorMessage)) {
-             errorMessage = errorMessage.map((err: any) => `${err.msg}`).join(', ');
-        }
-        throw new Error(errorMessage);
-      }
-
+      // 4. Éxito
       setSuccess(true);
       
       setTimeout(() => {
         setSuccess(false);
         onClose();
-        window.location.reload();
+        window.location.reload(); 
       }, 2000);
 
     } catch (err: any) {
       console.error("Error API:", err);
+      // El apiClient ya procesa el error y lanza una excepción con el mensaje limpio
       setError(err.message || "Ocurrió un error al procesar la transferencia.");
     } finally {
       setLoading(false);
@@ -115,7 +114,7 @@ export default function ExternalTransferModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#121212] border border-gray-800 w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="bg-[#121212] border border-gray-800 w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
         
         {/* Header */}
         <div className="bg-[#1a1a1a] px-6 py-4 flex justify-between items-center border-b border-gray-800">
@@ -138,42 +137,47 @@ export default function ExternalTransferModal({
                 </svg>
               </div>
               <h4 className="text-xl font-bold text-white mb-2">¡Envío Exitoso!</h4>
-              <p className="text-gray-400">Transferencia realizada correctamente.</p>
+              <p className="text-gray-400">Tu transferencia ha sido procesada.</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
               
+              {/* Selector de Banco (to_bank) */}
               <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-medium">Destino</label>
-                <div className="grid grid-cols-1 gap-3">
-                  <div className="relative">
-                    <select
-                      name="toAppName"
-                      value={formData.toAppName}
-                      onChange={handleChange}
-                      className="w-full appearance-none bg-[#1E1E1E] border border-gray-700 text-white rounded-lg px-4 py-3 pr-8 focus:border-green-500 outline-none transition-all"
-                    >
-                      {AVAILABLE_APPS.map((app) => (
-                        <option key={app.id} value={app.id}>{app.name}</option>
-                      ))}
-                    </select>
-                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
-                      <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                    </div>
-                  </div>
-
-                  <input
-                    type="text"
-                    name="toIdentifier"
-                    placeholder="Celular / ID del destinatario"
-                    value={formData.toIdentifier}
+                <label className="text-sm text-gray-400 font-medium">Banco Destino</label>
+                <div className="relative">
+                  <select
+                    name="toAppName"
+                    value={formData.toAppName}
                     onChange={handleChange}
-                    className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 focus:border-green-500 outline-none transition-all"
-                    required
-                  />
+                    className="w-full appearance-none bg-[#1E1E1E] border border-gray-700 text-white rounded-lg px-4 py-3 pr-8 focus:border-green-500 outline-none transition-all"
+                  >
+                    {AVAILABLE_APPS.map((app) => (
+                      <option key={app.id} value={app.id}>{app.name}</option>
+                    ))}
+                  </select>
+                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                    <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                  </div>
                 </div>
               </div>
 
+              {/* Celular (destination_phone_number) */}
+              <div className="space-y-2">
+                <label className="text-sm text-gray-400 font-medium">Celular Destino</label>
+                <input
+                  type="text"
+                  name="toIdentifier"
+                  placeholder="Ej: 913942547"
+                  value={formData.toIdentifier}
+                  onChange={handleChange}
+                  maxLength={15}
+                  className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 focus:border-green-500 outline-none transition-all"
+                  required
+                />
+              </div>
+
+              {/* Monto (amount) */}
               <div className="space-y-2">
                 <label className="text-sm text-gray-400 font-medium">Monto (Soles)</label>
                 <div className="relative">
@@ -182,8 +186,7 @@ export default function ExternalTransferModal({
                     type="number"
                     name="amount"
                     step="0.01"
-                    placeholder="0.01"
-                    // ✅ Modificación: Bloquea entrada de negativos/cero a nivel HTML
+                    placeholder="0.00"
                     min="0.01" 
                     value={formData.amount}
                     onChange={handleChange}
@@ -191,6 +194,21 @@ export default function ExternalTransferModal({
                     required
                   />
                 </div>
+              </div>
+
+              {/* Descripción (description) - NUEVO CAMPO */}
+              <div className="space-y-2">
+                <label className="text-sm text-gray-400 font-medium">Descripción</label>
+                <input
+                  type="text"
+                  name="description"
+                  placeholder="Ej: Pago por servicios..."
+                  value={formData.description}
+                  onChange={handleChange}
+                  maxLength={50}
+                  className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 focus:border-green-500 outline-none transition-all"
+                  required
+                />
               </div>
 
               {error && (
