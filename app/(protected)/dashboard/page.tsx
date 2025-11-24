@@ -8,6 +8,7 @@ import { TbPigMoney, TbSend } from 'react-icons/tb';
 import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../lib/api';
 import LoanModal from './depositmodal';
+import Link from 'next/link';
 
 interface DailyBalance {
   date: string;
@@ -161,7 +162,11 @@ export default function DashboardPage() {
 
         {/* Botones Acción */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button onClick={() => setIsLoanModalOpen(true)} className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-slate-700 group">
+          {/* Botón 1: Pedir Préstamo */}
+          <button 
+            onClick={() => setIsLoanModalOpen(true)} 
+            className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-slate-700 group"
+          >
             <div className="flex flex-col items-center gap-3">
               <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl text-emerald-600">
                 <TbPigMoney className="text-2xl" />
@@ -169,15 +174,19 @@ export default function DashboardPage() {
               <span className="font-medium text-slate-700 dark:text-slate-200">Pedir Préstamo</span>
             </div>
           </button>
-          {/* Botones placeholder para futuras features */}
-          <button className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm opacity-50 cursor-not-allowed border border-slate-100 dark:border-slate-700">
+
+          {/* Botón 2: Transferir (ACTIVADO con Link) */}
+          <Link 
+            href="/transactions" 
+            className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-slate-700 group cursor-pointer"
+          >
             <div className="flex flex-col items-center gap-3">
-              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl text-purple-600">
+              <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl text-purple-600 group-hover:scale-110 transition-transform duration-300">
                 <TbSend className="text-2xl" />
               </div>
               <span className="font-medium text-slate-700 dark:text-slate-200">Transferir</span>
             </div>
-          </button>
+          </Link>
         </div>
 
         {/* Gráfico y Métricas (Limpio de falsedades) */}
