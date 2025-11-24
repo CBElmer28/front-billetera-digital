@@ -116,7 +116,7 @@ export default function ExternalTransferModal({
       setSuccess(true);
       setTimeout(() => {
         onClose();
-        window.location.reload();
+        window.location.reload(); 
       }, 2000);
 
     } catch (err: any) {
