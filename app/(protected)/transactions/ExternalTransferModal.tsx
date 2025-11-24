@@ -29,7 +29,7 @@ export default function ExternalTransferModal({
 
   const [formData, setFormData] = useState({
     toIdentifier: '',
-    toAppName: AVAILABLE_APPS[0].id, // Por defecto LUCA
+    toAppName: AVAILABLE_APPS[0].id,
     amount: '',
   });
 
@@ -52,6 +52,7 @@ export default function ExternalTransferModal({
     }
     
     const amountVal = parseFloat(formData.amount);
+    // 2. VALIDACIÓN CLAVE: Bloquea montos menores o iguales a cero (SOLO POSITIVOS)
     if (isNaN(amountVal) || amountVal <= 0) {
       setError("El monto debe ser mayor a 0.");
       setLoading(false);
@@ -59,7 +60,7 @@ export default function ExternalTransferModal({
     }
 
     try {
-      // Generamos ID único para la transacción (Requisito de la API)
+      // Generamos ID único de transacción para Pixel Money
       const uniqueTxId = `TX${Date.now()}${Math.floor(Math.random() * 1000)}`;
 
       const payload = {
@@ -72,7 +73,7 @@ export default function ExternalTransferModal({
 
       console.log("🚀 Enviando a API Central:", payload);
 
-      // URL de la API Centralizada
+      // URL de la API Centralizada (Railway)
       const API_URL = 'https://centralized-wallet-api-production.up.railway.app/api/v1/sendTransfer';
       const userToken = typeof window !== 'undefined' ? localStorage.getItem('pixel-token') : '';
 
@@ -80,8 +81,8 @@ export default function ExternalTransferModal({
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-wallet-token': 'pixel-token',       // Header requerido
-          'Authorization': `Bearer ${userToken}` // Token del usuario
+          'x-wallet-token': 'pixel-token',
+          'Authorization': `Bearer ${userToken}`
         },
         body: JSON.stringify(payload),
       });
@@ -89,7 +90,7 @@ export default function ExternalTransferModal({
       const data = await response.json();
 
       if (!response.ok) {
-        let errorMessage = data.message || data.detail || "Error desconocido";
+        let errorMessage = data.message || data.detail || "Error desconocido en la transferencia";
         if (Array.isArray(errorMessage)) {
              errorMessage = errorMessage.map((err: any) => `${err.msg}`).join(', ');
         }
@@ -101,12 +102,12 @@ export default function ExternalTransferModal({
       setTimeout(() => {
         setSuccess(false);
         onClose();
-        window.location.reload(); // Recarga la página
+        window.location.reload();
       }, 2000);
 
     } catch (err: any) {
       console.error("Error API:", err);
-      setError(err.message || "Ocurrió un error al conectar con la API Central.");
+      setError(err.message || "Ocurrió un error al procesar la transferencia.");
     } finally {
       setLoading(false);
     }
@@ -115,11 +116,19 @@ export default function ExternalTransferModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
       <div className="bg-[#121212] border border-gray-800 w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+        
+        {/* Header */}
         <div className="bg-[#1a1a1a] px-6 py-4 flex justify-between items-center border-b border-gray-800">
           <h3 className="text-lg font-bold text-white tracking-tight">Transferencia Externa</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full">✕</button>
+          <button 
+            onClick={onClose} 
+            className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
+          >
+            ✕
+          </button>
         </div>
 
+        {/* Body */}
         <div className="p-6 overflow-y-auto">
           {success ? (
             <div className="flex flex-col items-center justify-center py-8 text-center animate-in zoom-in duration-300">
@@ -133,6 +142,7 @@ export default function ExternalTransferModal({
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
+              
               <div className="space-y-2">
                 <label className="text-sm text-gray-400 font-medium">Destino</label>
                 <div className="grid grid-cols-1 gap-3">
@@ -151,6 +161,7 @@ export default function ExternalTransferModal({
                       <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
                     </div>
                   </div>
+
                   <input
                     type="text"
                     name="toIdentifier"
@@ -164,14 +175,16 @@ export default function ExternalTransferModal({
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-medium">Monto</label>
+                <label className="text-sm text-gray-400 font-medium">Monto (Soles)</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">S/</span>
                   <input
                     type="number"
                     name="amount"
                     step="0.01"
-                    placeholder="0.00"
+                    placeholder="0.01"
+                    // ✅ Modificación: Bloquea entrada de negativos/cero a nivel HTML
+                    min="0.01" 
                     value={formData.amount}
                     onChange={handleChange}
                     className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 pl-10 text-lg font-medium focus:border-green-500 outline-none transition-all"
