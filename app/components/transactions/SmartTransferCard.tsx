@@ -40,7 +40,6 @@ export default function SmartTransferCard() {
     setLoading(true);
 
     try {
-      // Consultamos el directorio inteligente del Gateway
       const data: any = await apiClient.get(`/p2p/directory/${phoneQuery}`);
       
       if (!data.options || data.options.length === 0) {
@@ -49,11 +48,10 @@ export default function SmartTransferCard() {
         return;
       }
 
-      // Guardamos resultados y avanzamos
       setDestName(data.name || "Usuario");
       setDestPhone(data.phone);
       setAvailableBanks(data.options);
-      setSelectedBank(data.options[0]); // Seleccionar el primero por defecto
+      setSelectedBank(data.options[0]); 
       setStep(2);
 
     } catch (err: any) {
@@ -70,7 +68,6 @@ export default function SmartTransferCard() {
     setError(null);
     const amountVal = parseFloat(amount);
 
-    // Validaciones
     if (isNaN(amountVal) || amountVal <= 0) return setError("Ingresa un monto válido.");
     if (!password) return setError("Debes ingresar tu contraseña para confirmar.");
     if (!selectedBank) return setError("Selecciona un banco destino.");
@@ -80,7 +77,6 @@ export default function SmartTransferCard() {
     try {
       const idempotencyKey = uuidv4();
 
-      // Payload exacto que espera el Gateway (incluyendo la contraseña)
       const payload = {
         to_bank: selectedBank,
         destination_phone_number: destPhone,
@@ -89,8 +85,6 @@ export default function SmartTransferCard() {
         confirmationPassword: password 
       };
 
-      // Usamos SIEMPRE el endpoint centralizado del Gateway.
-      // Él sabrá si es interno (Pixel) o externo (Luca) basado en 'to_bank'.
       await apiClient.request('/ledger/transfer-central', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -99,13 +93,12 @@ export default function SmartTransferCard() {
 
       setSuccess(true);
       showNotification('Transferencia realizada con éxito', 'success');
-      // Resetear formulario después de 3s
+      
       setTimeout(() => {
         resetForm();
       }, 3000);
 
     } catch (err: any) {
-      // Si el error es de contraseña, el backend devuelve 401 y el apiClient lanza el error.
       setError(err.message || "Error al realizar la transferencia.");
     } finally {
       setLoading(false);
@@ -154,13 +147,14 @@ export default function SmartTransferCard() {
       </div>
 
       <div className="p-6 relative">
-        {/* Indicador de Pasos */}
+        {/* Botón Volver (Solo en paso 2) */}
         {step === 2 && (
             <button onClick={() => setStep(1)} className="absolute top-6 right-6 text-sm text-blue-400 hover:underline z-10">
                 ← Volver a buscar
             </button>
         )}
 
+        {/* Mensaje de Error */}
         {error && (
           <div className="mb-6 bg-rose-500/10 border border-rose-500/50 text-rose-500 p-4 rounded-xl flex items-center gap-3 animate-in fade-in">
             <AlertCircle size={20} />
@@ -213,24 +207,49 @@ export default function SmartTransferCard() {
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Selector de Banco */}
-                <div>
-                  <label className="block text-sm font-medium text-slate-300 mb-2 pl-1">Banco Destino</label>
-                  <div className="relative">
-                      <select
-                          value={selectedBank}
-                          onChange={(e) => setSelectedBank(e.target.value)}
-                          className="w-full pl-12 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white appearance-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-medium"
-                      >
-                          {availableBanks.map(bank => (
-                              <option key={bank} value={bank} className="bg-slate-800">{bank}</option>
-                          ))}
-                      </select>
-                      <Building2 className="absolute left-4 top-3.5 text-slate-500 w-5 h-5 pointer-events-none" />
-                  </div>
-                </div>
+            {/* Selector de Banco Visual */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-3 pl-1">
+                Elige el Banco Destino
+              </label>
+              
+              <div className="grid grid-cols-2 gap-3">
+                {availableBanks.map((bank) => {
+                  const isSelected = selectedBank === bank;
+                  return (
+                    <button
+                      key={bank}
+                      type="button"
+                      onClick={() => setSelectedBank(bank)}
+                      className={`
+                        relative flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all
+                        ${isSelected 
+                          ? 'border-blue-500 bg-blue-500/10 text-white shadow-lg shadow-blue-500/20' 
+                          : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:border-slate-600 hover:bg-slate-800'
+                        }
+                      `}
+                    >
+                      <div className={`mb-2 p-2 rounded-full ${isSelected ? 'bg-blue-500' : 'bg-slate-700'}`}>
+                        <Building2 size={20} className="text-white" />
+                      </div>
+                      
+                      <span className="font-bold text-sm">{bank}</span>
+                      
+                      {isSelected && (
+                        <div className="absolute top-2 right-2">
+                          <CheckCircle2 size={16} className="text-blue-500" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-slate-500 mt-2 pl-1">
+                Este número tiene cuentas asociadas en {availableBanks.length} bancos.
+              </p>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Monto */}
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2 pl-1">Monto a enviar</label>
@@ -246,18 +265,18 @@ export default function SmartTransferCard() {
                       />
                   </div>
                 </div>
-            </div>
 
-            {/* Descripción Opcional */}
-            <div>
-               <label className="block text-sm font-medium text-slate-300 mb-2 pl-1">Nota (Opcional)</label>
-               <input
-                   type="text"
-                   value={description}
-                   onChange={(e) => setDescription(e.target.value)}
-                   className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                   placeholder="Ej: Pago de cena"
-               />
+                {/* Descripción Opcional */}
+                <div>
+                   <label className="block text-sm font-medium text-slate-300 mb-2 pl-1">Nota (Opcional)</label>
+                   <input
+                       type="text"
+                       value={description}
+                       onChange={(e) => setDescription(e.target.value)}
+                       className="w-full px-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-white placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       placeholder="Ej: Pago de cena"
+                   />
+                </div>
             </div>
 
             {/* Contraseña de Seguridad */}

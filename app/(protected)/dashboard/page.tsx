@@ -1,14 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid
 } from 'recharts';
-import { FaWallet, FaArrowUp, FaArrowDown, FaChartLine, FaArrowRightArrowLeft, FaArrowTrendUp } from 'react-icons/fa6';
+import { FaWallet, FaArrowUp, FaArrowDown, FaArrowTrendUp } from 'react-icons/fa6';
 import { TbPigMoney, TbSend } from 'react-icons/tb';
 import { useNotification } from '../../contexts/NotificationContext';
 import { apiClient } from '../../lib/api';
 import LoanModal from './depositmodal';
-import Link from 'next/link';
 
 interface DailyBalance {
   date: string;
@@ -30,8 +30,8 @@ const typeLabels: Record<string, string> = {
   CONTRIBUTION_SENT: 'Aporte a grupo',
   WITHDRAWAL: 'Retiro',
   TRANSFER: 'Transferencia',
-  LOAN_DISBURSEMENT: 'Préstamo Recibido', // ¡NUEVO!
-  LOAN_PAYMENT: 'Pago de Préstamo', // ¡NUEVO!
+  LOAN_DISBURSEMENT: 'Préstamo Recibido',
+  LOAN_PAYMENT: 'Pago de Préstamo',
 };
 
 export default function DashboardPage() {
@@ -43,10 +43,11 @@ export default function DashboardPage() {
   const { showNotification } = useNotification();
   const [accountData, setAccountData] = useState<any>(null);
 
-  const refreshData = async () => {
-    setLoading(true);
+  // Función optimizada para polling
+  const refreshData = async (isAutoRefresh = false) => {
+    if (!isAutoRefresh) setLoading(true); // Solo spinner si no es auto-refresh
+    
     try {
-      // Usamos apiClient para llamadas limpias
       const [balanceData, dailyData, txData] = await Promise.all([
         apiClient.get('/balance/me'),
         apiClient.get('/ledger/analytics/daily_balance/me'),
@@ -54,25 +55,34 @@ export default function DashboardPage() {
       ]);
 
       setBalance(balanceData.balance ?? 0);
-
       setAccountData(balanceData);
       
-      // El backend a veces devuelve array directo o un objeto, normalizamos
       const parsedDaily = Array.isArray(dailyData) ? dailyData : dailyData?.daily_balance || [];
       setDailyBalance(parsedDaily);
       
       setTransactions(Array.isArray(txData) ? txData : []);
 
     } catch (err: any) {
-      console.error('Error fetching dashboard data', err);
-      showNotification(err.message || 'Error al cargar datos', 'error');
+      console.error('Error refreshing data', err);
+      // No mostramos notificación de error en el polling silencioso para no molestar
+      if (!isAutoRefresh) showNotification(err.message || 'Error al cargar datos', 'error');
     } finally {
-      setLoading(false);
+      if (!isAutoRefresh) setLoading(false);
     }
   };
 
+  // Efecto de Carga Inicial + Polling
   useEffect(() => {
+    // 1. Carga inicial inmediata
     refreshData();
+
+    // 2. Configurar intervalo de 5 segundos
+    const intervalId = setInterval(() => {
+      refreshData(true); // true = modo silencioso (sin spinner)
+    }, 5000);
+
+    // 3. Limpiar intervalo al desmontar
+    return () => clearInterval(intervalId);
   }, []);
 
   const handleLoanSuccess = () => {
@@ -80,7 +90,7 @@ export default function DashboardPage() {
     showNotification('¡Préstamo solicitado exitosamente!', 'success');
   };
 
-  // Cálculos reales basados en transacciones reales
+  // Cálculos en tiempo real
   const ingresos = transactions
     .filter(tx => tx.status === 'COMPLETED' && (tx.type.includes('DEPOSIT') || tx.type.includes('RECEIVED') || tx.type === 'LOAN_DISBURSEMENT'))
     .reduce((acc, tx) => acc + tx.amount, 0);
@@ -89,7 +99,7 @@ export default function DashboardPage() {
     .filter(tx => tx.status === 'COMPLETED' && (tx.type.includes('SENT') || tx.type.includes('WITHDRAWAL') || tx.type === 'TRANSFER' || tx.type === 'LOAN_PAYMENT'))
     .reduce((acc, tx) => acc + tx.amount, 0);
 
-  if (loading && balance === 0) { // Solo pantalla de carga inicial
+  if (loading && balance === 0) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
@@ -118,67 +128,64 @@ export default function DashboardPage() {
             </div>
             <div>
               <p className="text-blue-100">Saldo Disponible</p>
-              <p className="text-4xl font-bold">S/ {balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}</p>
+              {/* Animación sutil al cambiar saldo */}
+              <p className="text-4xl font-bold transition-all duration-500">
+                S/ {balance.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Tarjeta de Deuda (Solo si existe deuda) */}
-      {/* Nota: Necesitamos guardar el objeto completo 'account' en el estado, no solo 'balance' */}
-      {/* 1. Agrega un estado nuevo arriba: const [accountData, setAccountData] = useState<any>(null); */}
-      {/* 2. En refreshData, haz: setAccountData(balanceData); */}
-
-      {/* Y luego renderiza esto: */}
-      {/* 👇 CAMBIO CRÍTICO: Usar .loan en lugar de .active_loan */}
-      {accountData?.loan && accountData.loan.status === 'active' && (
-        <div className="mt-6 bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl p-6 text-white shadow-xl flex justify-between items-center">
-          <div className="flex items-center gap-4">
-            <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
-              <FaWallet className="text-2xl" />
+        {/* Tarjeta de Deuda */}
+        {accountData?.loan && accountData.loan.status === 'active' && (
+          <div className="mt-6 bg-gradient-to-br from-orange-500 to-red-600 rounded-3xl p-6 text-white shadow-xl flex justify-between items-center animate-in slide-in-from-top-2">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-sm">
+                <FaWallet className="text-2xl" />
+              </div>
+              <div>
+                <p className="text-orange-100 text-sm font-medium">Deuda con el Banco</p>
+                <p className="text-3xl font-bold">S/ {accountData.loan.outstanding_balance}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-orange-100 text-sm font-medium">Deuda con el Banco</p>
-              {/* 👇 AQUÍ TAMBIÉN: .loan */}
-              <p className="text-3xl font-bold">S/ {accountData.loan.outstanding_balance}</p>
-            </div>
+            <button 
+              onClick={async () => {
+                if(!confirm("¿Pagar deuda completa con tu saldo?")) return;
+                try {
+                  await apiClient.post('/pay-loan', {});
+                  refreshData();
+                  showNotification("¡Deuda pagada!", "success");
+                } catch(e: any) {
+                  showNotification(e.message, "error");
+                }
+              }}
+              className="px-6 py-2 bg-white text-orange-600 font-bold rounded-xl shadow-lg hover:bg-orange-50 transition-colors"
+            >
+              Pagar Ahora
+            </button>
           </div>
-          <button 
-            onClick={async () => {
-              if(!confirm("¿Pagar deuda completa con tu saldo?")) return;
-              try {
-                await apiClient.post('/pay-loan', {});
-                refreshData(); // Recargar para quitar la tarjeta
-                showNotification("¡Deuda pagada!", "success");
-              } catch(e: any) {
-                showNotification(e.message, "error");
-              }
-            }}
-            className="px-6 py-2 bg-white text-orange-600 font-bold rounded-xl shadow-lg hover:bg-orange-50 transition-colors"
-          >
-            Pagar Ahora
-          </button>
-        </div>
-      )}
+        )}
 
         {/* Botones Acción */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          
           {/* Botón 1: Pedir Préstamo */}
           <button 
             onClick={() => setIsLoanModalOpen(true)} 
-            className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-slate-700 group"
+            className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-slate-700 group cursor-pointer"
           >
             <div className="flex flex-col items-center gap-3">
-              <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl text-emerald-600">
+              <div className="p-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl text-emerald-600 group-hover:scale-110 transition-transform duration-300">
                 <TbPigMoney className="text-2xl" />
               </div>
               <span className="font-medium text-slate-700 dark:text-slate-200">Pedir Préstamo</span>
             </div>
           </button>
 
-          {/* Botón 2: Transferir (ACTIVADO con Link) */}
+          {/* Botón 2: Transferir (ACTIVADO) */}
           <Link 
             href="/transactions" 
-            className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-slate-700 group cursor-pointer"
+            className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm hover:shadow-md transition-all border border-slate-100 dark:border-slate-700 group cursor-pointer block"
           >
             <div className="flex flex-col items-center gap-3">
               <div className="p-3 bg-purple-100 dark:bg-purple-900/30 rounded-xl text-purple-600 group-hover:scale-110 transition-transform duration-300">
@@ -187,11 +194,11 @@ export default function DashboardPage() {
               <span className="font-medium text-slate-700 dark:text-slate-200">Transferir</span>
             </div>
           </Link>
+          
         </div>
 
-        {/* Gráfico y Métricas (Limpio de falsedades) */}
+        {/* Gráfico y Métricas */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Gráfico Histórico */}
           <div className="lg:col-span-2 bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
             <h3 className="text-lg font-semibold mb-4 text-slate-800 dark:text-slate-100">Evolución de Saldo (30 días)</h3>
             <div className="h-[300px]">
@@ -216,7 +223,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Resumen Métricas Reales */}
           <div className="space-y-6">
             <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
               <div className="flex items-center gap-4 mb-2">
