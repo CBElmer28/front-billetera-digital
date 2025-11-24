@@ -5,10 +5,15 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import RequestWithdrawalModal from './RequestWithdrawalModal';
 import LeaderWithdrawalModal from './LeaderWithdrawalModal';
-import { FaUsers, FaUserShield, FaHistory, FaArrowLeft, FaSignOutAlt, FaTrash, FaMoneyBillWave,FaGift, FaUserPlus } from 'react-icons/fa';
-import { apiClient } from '../../../lib/api'; // Asegúrate que la ruta sea correcta
+import { FaArrowLeft, FaTrash } from 'react-icons/fa';
+import { apiClient } from '../../../lib/api';
+import { usePolling } from '../../../../hooks/usePolling';
 
-// --- DEFINICIÓN DE TIPOS (Para que TypeScript no se queje) ---
+// 👇 1. IMPORTAR UTILIDADES Y MODAL
+import { getTransactionDetails } from '../../../lib/transactionUtils';
+import TransactionModal from '../../../components/transactions/TransactionModal';
+
+// --- DEFINICIÓN DE TIPOS ---
 interface GroupMember {
   user_id: number;
   name: string;
@@ -39,7 +44,6 @@ export default function GroupDetailPage() {
   const router = useRouter();
   const groupId = params.id;
 
-  // 👇 AQUÍ ESTÁ LA MAGIA: Usamos <GroupDetails | null> en lugar de <any>
   const [group, setGroup] = useState<GroupDetails | null>(null);
   const [balance, setBalance] = useState<any | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
@@ -51,12 +55,16 @@ export default function GroupDetailPage() {
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);
   const [isLeaderWithdrawalModalOpen, setIsLeaderWithdrawalModalOpen] = useState(false);
 
+  // 👇 2. NUEVO ESTADO PARA EL MODAL DE DETALLE
+  const [selectedTx, setSelectedTx] = useState<any | null>(null);
+
   const myUserId = typeof window !== 'undefined' ? parseInt(localStorage.getItem('pixel-user-id') || '0') : 0;
 
-  const fetchGroupData = async () => {
+  const fetchGroupData = async (isAutoRefresh = false) => {
     if (!groupId) return;
-    setLoading(true);
-    setError(null);
+    
+    if (!isAutoRefresh) setLoading(true);
+
     try {
       const [groupData, balanceData, txData] = await Promise.all([
         apiClient.get(`/groups/${groupId}`),
@@ -78,14 +86,16 @@ export default function GroupDetailPage() {
 
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Error cargando el grupo');
+      if (!isAutoRefresh) setError(err.message || 'Error cargando el grupo');
     } finally {
-      setLoading(false);
+      if (!isAutoRefresh) setLoading(false);
     }
   };
 
-  useEffect(() => { fetchGroupData(); }, [groupId]);
+  // Usamos el hook de Polling
+  usePolling(fetchGroupData, 4000);
 
+  // Handlers de Acciones
   const handleLeaveGroup = async () => {
     if (!window.confirm("¿Salir del grupo?")) return;
     setLoading(true);
@@ -143,8 +153,15 @@ export default function GroupDetailPage() {
     }
   };
 
+  // 👇 HELPER: Obtener nombre real del miembro basado en ID de transacción
+  const getMemberName = (userId: number) => {
+    if (!group) return 'Usuario';
+    const member = group.members.find((m) => m.user_id === userId);
+    return member ? member.name : 'Ex-miembro';
+  };
+
   if (loading && !group) return (
-    <div className="min-h-screen flex items-center justify-center">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
     </div>
   );
@@ -156,10 +173,17 @@ export default function GroupDetailPage() {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 p-6">
       <div className="max-w-6xl mx-auto space-y-8">
         
+        {/* MODAL DE DETALLE DE TRANSACCIÓN */}
+        <TransactionModal 
+            isOpen={!!selectedTx} 
+            onClose={() => setSelectedTx(null)} 
+            transaction={selectedTx} 
+        />
+
         {/* HEADER */}
         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <Link href="/groups" className="p-2 bg-slate-100 rounded-lg"><FaArrowLeft /></Link>
+            <Link href="/groups" className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-200"><FaArrowLeft /></Link>
             <h1 className="text-2xl font-bold text-slate-800 dark:text-white">{group.name}</h1>
           </div>
           
@@ -180,9 +204,9 @@ export default function GroupDetailPage() {
               <p className="text-3xl font-bold text-emerald-500">S/ {balance.balance}</p>
               <div className="mt-4 space-y-2">
                 {!isLeader ? (
-                  <button onClick={() => setIsRequestModalOpen(true)} className="w-full py-2 bg-sky-500 text-white rounded-lg">Solicitar Retiro</button>
+                  <button onClick={() => setIsRequestModalOpen(true)} className="w-full py-2 bg-sky-500 text-white rounded-lg font-medium">Solicitar Retiro</button>
                 ) : (
-                  <button onClick={() => setIsLeaderWithdrawalModalOpen(true)} className="w-full py-2 bg-blue-600 text-white rounded-lg">Retiro de Líder</button>
+                  <button onClick={() => setIsLeaderWithdrawalModalOpen(true)} className="w-full py-2 bg-blue-600 text-white rounded-lg font-medium">Retiro de Líder</button>
                 )}
               </div>
             </div>
@@ -246,37 +270,85 @@ export default function GroupDetailPage() {
               </div>
             </div>
 
-            {/* HISTORIAL */}
-            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm">
+            {/* 👇 HISTORIAL PROFESIONAL MEJORADO 👇 */}
+            <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
               <h3 className="font-bold text-slate-700 dark:text-white mb-4">Historial del Grupo</h3>
-              <div className="space-y-2">
-                {transactions.map(tx => (
-                  <div key={tx.id} className="flex justify-between text-sm border-b border-slate-100 pb-2 last:border-0">
-                    <span className="text-slate-600">{tx.type}</span>
-                    <span className={tx.type.includes('RECEIVED') || tx.type === 'DEPOSIT' ? 'text-emerald-600' : 'text-slate-800'}>
-                      S/ {tx.amount}
-                    </span>
-                  </div>
-                ))}
-                {transactions.length === 0 && <p className="text-slate-400 text-sm">Sin movimientos</p>}
+              <div className="space-y-3">
+                {transactions.map((tx) => {
+                  // 1. Obtener datos base de la utilidad
+                  const { icon, amountColor } = getTransactionDetails(tx);
+                  
+                  // 2. PERSONALIZAR EL TÍTULO CON EL NOMBRE REAL
+                  let customTitle = 'Movimiento';
+                  // tx.user_id es quien hizo la acción
+                  const actorName = getMemberName(tx.user_id); 
+
+                  if (tx.type === 'CONTRIBUTION_RECEIVED') {
+                    customTitle = `Aporte de ${actorName}`;
+                  } else if (tx.type === 'GROUP_WITHDRAWAL') {
+                    customTitle = `Retiro de ${actorName}`;
+                  } else {
+                    customTitle = tx.type.replace(/_/g, ' ');
+                  }
+
+                  // 3. Ajustar color para el grupo (Withdrawal es negativo para el grupo)
+                  const groupAmountColor = tx.type === 'GROUP_WITHDRAWAL' ? 'text-rose-600' : 'text-emerald-600';
+                  const symbol = tx.type === 'GROUP_WITHDRAWAL' ? '-' : '+';
+
+                  return (
+                    <div 
+                        key={tx.id} 
+                        onClick={() => setSelectedTx(tx)}
+                        className="flex items-center justify-between p-3 hover:bg-slate-50 dark:hover:bg-slate-700/50 rounded-xl transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className={`p-3 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-100 dark:border-slate-600 group-hover:scale-110 transition-transform`}>
+                          {icon}
+                        </div>
+                        <div>
+                          <p className="font-bold text-sm text-slate-800 dark:text-slate-200">
+                            {customTitle}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                            {new Date(tx.created_at).toLocaleDateString()} • {new Date(tx.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      <div className="text-right">
+                        <span className={`font-bold text-base ${groupAmountColor}`}>
+                          {symbol} S/ {tx.amount.toLocaleString('es-PE', { minimumFractionDigits: 2 })}
+                        </span>
+                        <p className="text-[10px] text-slate-400 uppercase tracking-wide">
+                          {tx.status}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+                {transactions.length === 0 && (
+                  <p className="text-center text-slate-500 py-8 italic">
+                    No hay movimientos registrados en este grupo.
+                  </p>
+                )}
               </div>
             </div>
 
           </div>
         </div>
 
-        {/* MODALES */}
+        {/* MODALES DE ACCIÓN */}
         <RequestWithdrawalModal
           isOpen={isRequestModalOpen}
           onClose={() => setIsRequestModalOpen(false)}
-          group={{ id: group.id, name: group.name }}
-          onRequestSuccess={fetchGroupData}
+          group={group ? { id: group.id, name: group.name } : {id:0, name:''}}
+          onRequestSuccess={() => fetchGroupData(false)}
         />
         <LeaderWithdrawalModal
           isOpen={isLeaderWithdrawalModalOpen}
           onClose={() => setIsLeaderWithdrawalModalOpen(false)}
-          group={{ id: group.id, name: group.name }}
-          onWithdrawalSuccess={fetchGroupData}
+          group={group ? { id: group.id, name: group.name } : {id:0, name:''}}
+          onWithdrawalSuccess={() => fetchGroupData(false)}
         />
 
       </div>

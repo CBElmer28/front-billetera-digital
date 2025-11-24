@@ -2,11 +2,21 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { Home, CreditCard, Users, Settings, LogOut, PieChart, Wallet, Calendar, FileText, Stethoscope, Activity, X, ChevronLeft, ChevronRight, User } from 'lucide-react';
+import { 
+  Home, 
+  CreditCard, 
+  Users, 
+  Settings, 
+  LogOut, 
+  X, 
+  ChevronLeft, 
+  ChevronRight, 
+  User 
+} from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { FaUserCircle } from 'react-icons/fa';
+import { apiClient } from '../lib/api'; // Asegúrate de usar tu cliente API
 
-interface User {
+interface UserData {
   name: string;
   email: string;
   age?: number;
@@ -17,35 +27,35 @@ interface User {
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserData | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("pixel-token");
-    if (!token) return;
-
-    fetch("https://pixel-money.koyeb.app/auth/me", {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(res => {
-        if (!res.ok) throw new Error("Unauthorized");
-        return res.json();
-      })
-      .then(data => setUser({ 
-        name: data.name, 
-        email: data.email,
-        age: data.age,
-        phone: data.phone,
-        avatar: data.avatar
-      }))
-      .catch(() => {});
+    const fetchUser = async () => {
+      try {
+        const data: any = await apiClient.get('/auth/me');
+        setUser({ 
+          name: data.name, 
+          email: data.email,
+          age: data.age,
+          phone: data.phone,
+          avatar: data.avatar
+        });
+      } catch (error) {
+        console.error("Error loading sidebar user", error);
+      }
+    };
+    fetchUser();
   }, []);
 
   const handleLogout = () => {
-    localStorage.removeItem("pixel-token");
-    localStorage.removeItem("pixel-user-id");
-    router.push("/");
+    // Confirmación nativa del navegador (Simple y efectiva)
+    if (window.confirm("¿Estás seguro de que quieres cerrar sesión?")) {
+      localStorage.removeItem("pixel-token");
+      localStorage.removeItem("pixel-user-id");
+      router.push("/"); // Redirigir al login
+    }
   };
 
   const links = [
@@ -57,25 +67,17 @@ export default function Sidebar() {
 
   const NavContent = () => (
     <>
-      {/* Header elegante con logo */}
-      <div className="p-6 pb-4 border-b border-sky-100 dark:border-slate-700">
-        <div className={`flex items-center justify-between transition-all duration-300 ${collapsed ? 'flex-col space-y-4' : ''}`}>
+      {/* 1. HEADER (Logo) */}
+      <div className="p-6 pb-4">
+        <div className={`flex items-center justify-between transition-all duration-300 ${collapsed ? 'justify-center' : ''}`}>
           {!collapsed ? (
             <div className="flex items-center space-x-3">
-              <div className="flex items-center space-x-3">
-                 {/* Logo */}
-      <div className="flex items-center space-x-3">
-        <img
-          src="/PixelMoneyLogoPng.png"
-          alt="Pixel Money"
-          className="w-10 h-10 object-contain transition-all duration-300 dark:invert"
-        />
-        <span className="text-xl font-bold text-gray-800 dark:text-gray-100 tracking-wide">
-          Pixel Money
-        </span>
-      </div>
-
+              <div className="w-8 h-8 bg-gradient-to-br from-sky-500 to-blue-600 rounded-lg flex items-center justify-center shadow-md">
+                <span className="text-white font-bold text-xs">PM</span>
               </div>
+              <span className="text-xl font-bold text-slate-800 dark:text-slate-100 tracking-wide">
+                Pixel Money
+              </span>
             </div>
           ) : (
             <div className="w-10 h-10 bg-gradient-to-br from-sky-500 to-blue-600 rounded-xl flex items-center justify-center shadow-lg">
@@ -92,54 +94,24 @@ export default function Sidebar() {
         </div>
       </div>
 
-      {/* Sección de usuario integrada */}
-      {user && (
-        <div className={`px-6 py-6 transition-all duration-300 ${collapsed ? 'text-center px-4' : ''}`}>
-          <div className={`bg-gradient-to-br from-sky-50 to-blue-50 dark:from-slate-800 dark:to-blue-900/20 rounded-2xl p-4 shadow-sm border border-sky-100 dark:border-slate-700 ${collapsed ? 'px-3' : ''}`}>
-            <div className={`flex items-center ${collapsed ? 'justify-center flex-col space-y-3' : 'space-x-4'}`}>
-              <div className="relative">
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 flex items-center justify-center overflow-hidden border-2 border-white dark:border-slate-800 shadow-md">
-                  {user.avatar ? (
-                    <img
-                      src={user.avatar}
-                      alt="Avatar"
-                      className="w-full h-full object-cover"
-                    />
-                  ) : (
-                    <User className="w-6 h-6 text-white" />
-                  )}
-                </div>
-                <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white dark:border-slate-800"></div>
-              </div>
-              
-              {!collapsed && (
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">
-                    {user.name}
-                  </h2>
-                  <div className="flex items-center space-x-2 mt-1">
-                    {user.age && (
-                      <span className="text-xs text-slate-600 dark:text-slate-400 font-medium bg-sky-100 dark:bg-sky-900/30 px-2 py-0.5 rounded-full">
-                        {user.age} años
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-slate-500 dark:text-slate-400 text-xs mt-2 truncate">
-                    {user.email}
-                  </p>
-                </div>
-              )}
-            </div>
+      {/* 2. PERFIL DE USUARIO (Compacto) */}
+      <div className={`px-4 mb-6 transition-all duration-300 ${collapsed ? 'px-2' : ''}`}>
+        <div className={`bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700 rounded-xl p-3 flex items-center ${collapsed ? 'justify-center' : 'gap-3'}`}>
+          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-sky-400 to-blue-500 flex items-center justify-center text-white font-bold shadow-sm shrink-0">
+            {user?.avatar ? <img src={user.avatar} alt="avatar" className="w-full h-full rounded-full" /> : <User size={18} />}
           </div>
+          
+          {!collapsed && user && (
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{user.name.split(' ')[0]}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 truncate">Cuenta Activa</p>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* Navegación minimalista */}
-      <nav className="flex-1 px-4 space-y-2">
-        <div className={`text-xs font-medium text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-4 ${collapsed ? 'text-center' : 'px-3'}`}>
-          {collapsed ? '•' : 'Navegación Principal'}
-        </div>
-        
+      {/* 3. NAVEGACIÓN PRINCIPAL (Sin flex-1 para no empujar todo abajo) */}
+      <nav className="px-4 space-y-1">
         {links.map((link) => {
           const isActive = pathname === link.href;
           return (
@@ -147,46 +119,52 @@ export default function Sidebar() {
               key={link.href}
               href={link.href}
               onClick={() => setMobileOpen(false)}
-              className={`flex items-center p-3 rounded-xl transition-all duration-300 group ${
+              className={`flex items-center p-3 rounded-xl transition-all duration-200 group relative ${
                 isActive 
-                  ? 'bg-gradient-to-r from-sky-500 to-blue-600 text-white shadow-lg shadow-blue-500/25' 
-                  : 'text-slate-600 dark:text-slate-400 hover:bg-sky-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200'
               } ${collapsed ? 'justify-center' : ''}`}
             >
-              <div className={`transition-transform duration-300 ${isActive ? 'scale-110' : 'group-hover:scale-110'} ${collapsed ? '' : 'mr-3'}`}>
+              <div className={`transition-transform duration-200 ${!collapsed ? 'mr-3' : ''}`}>
                 {link.icon}
               </div>
               {!collapsed && (
-                <span className="font-medium text-sm tracking-wide">{link.label}</span>
-              )}
-              {!collapsed && isActive && (
-                <div className="ml-auto w-2 h-2 bg-white rounded-full animate-pulse"></div>
+                <span className="font-medium text-sm">{link.label}</span>
               )}
             </Link>
           );
         })}
+
+        {/* 4. BOTÓN DE CERRAR SESIÓN (Integrado aquí mismo) */}
+        <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-700/50">
+          <button
+            onClick={handleLogout}
+            className={`w-full flex items-center p-3 rounded-xl transition-all duration-200 group ${
+              collapsed ? 'justify-center' : ''
+            } text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600`}
+          >
+            <div className={`transition-transform duration-200 ${!collapsed ? 'mr-3' : ''}`}>
+              <LogOut size={20} />
+            </div>
+            {!collapsed && (
+              <span className="font-medium text-sm">Cerrar sesión</span>
+            )}
+          </button>
+        </div>
       </nav>
 
-      {/* Footer del Sidebar */}
-      <div className="p-4 border-t border-sky-100 dark:border-slate-700">
-        {/* Cerrar sesión */}
-        <button
-          onClick={handleLogout}
-          className={`flex items-center w-full p-3 text-slate-600 dark:text-slate-400 rounded-xl font-medium hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:text-rose-600 dark:hover:text-rose-400 transition-colors group ${
-            collapsed ? 'justify-center' : ''
-          }`}
-        >
-          <LogOut size={18} className={collapsed ? '' : 'mr-3'} />
-          {!collapsed && 'Cerrar sesión'}
-        </button>
-
-        {/* Botón para colapsar/expandir - Solo desktop */}
+      {/* 5. FOOTER (Solo el botón de contraer, pegado al fondo) */}
+      <div className="mt-auto p-4 border-t border-slate-100 dark:border-slate-700">
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="hidden lg:flex items-center justify-center w-full mt-3 p-2 text-slate-500 dark:text-slate-400 rounded-lg hover:bg-sky-50 dark:hover:bg-slate-800 transition-colors text-xs font-medium"
+          className="hidden lg:flex items-center justify-center w-full p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
         >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
-          {!collapsed && <span className="ml-2">Contraer</span>}
+          {collapsed ? <ChevronRight size={18} /> : (
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <ChevronLeft size={14} />
+              <span>Contraer menú</span>
+            </div>
+          )}
         </button>
       </div>
     </>
@@ -194,35 +172,35 @@ export default function Sidebar() {
 
   return (
     <>
-      {/* Sidebar para desktop */}
-      <aside className={`hidden lg:flex bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-r border-sky-100 dark:border-slate-700 flex-col transition-all duration-300 ${
-        collapsed ? 'w-20' : 'w-64'
+      {/* Desktop Sidebar */}
+      <aside className={`hidden lg:flex bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex-col transition-all duration-300 ${
+        collapsed ? 'w-20' : 'w-72'
       }`}>
         <NavContent />
       </aside>
 
-      {/* Sidebar para mobile */}
-      <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-r border-sky-100 dark:border-slate-700 flex-col justify-between transition-all duration-300 transform ${
+      {/* Mobile Sidebar */}
+      <aside className={`lg:hidden fixed inset-y-0 left-0 z-50 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col transition-transform duration-300 ${
         mobileOpen ? 'translate-x-0' : '-translate-x-full'
-      } w-64`}>
+      } w-72`}>
         <NavContent />
       </aside>
 
-      {/* Overlay para mobile */}
+      {/* Overlay Mobile */}
       {mobileOpen && (
         <div 
-          className="lg:hidden fixed inset-0 bg-black/50 backdrop-blur-sm z-40"
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden backdrop-blur-sm"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
-      {/* Botón para abrir sidebar en mobile */}
+      {/* Trigger Mobile */}
       {!mobileOpen && (
         <button
           onClick={() => setMobileOpen(true)}
-          className="lg:hidden fixed top-4 left-4 z-30 w-10 h-10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-xl border border-sky-100 dark:border-slate-700 flex items-center justify-center shadow-lg"
+          className="lg:hidden fixed top-4 left-4 z-30 p-2 bg-white dark:bg-slate-800 rounded-lg shadow-md border border-slate-200 dark:border-slate-700"
         >
-          <ChevronRight size={18} className="text-slate-600 dark:text-slate-400" />
+          <ChevronRight size={20} className="text-slate-600 dark:text-slate-400" />
         </button>
       )}
     </>
