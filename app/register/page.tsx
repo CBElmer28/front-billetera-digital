@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Mail, Lock, User, Phone, ArrowRight, Smartphone, Loader2 } from 'lucide-react';
-import { apiClient } from '../lib/api'; // Asegúrate que la ruta sea correcta
+import { Mail, Lock, Phone, ArrowRight, Smartphone, Loader2, FileBadge } from 'lucide-react'; // Importar FileBadge para DNI
+import { apiClient } from '../lib/api'; 
 import { useNotification } from '../contexts/NotificationContext';
 
 export default function RegisterPage() {
@@ -12,7 +12,7 @@ export default function RegisterPage() {
   const { showNotification } = useNotification();
   
   const [formData, setFormData] = useState({
-    name: '',
+    dni: '',        // <--- CAMBIO: Usamos DNI
     email: '',
     phone_number: '',
     password: ''
@@ -20,14 +20,24 @@ export default function RegisterPage() {
   const [loading, setLoading] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
+    const { name, value } = e.target;
+    
+    // Validar que DNI y Teléfono sean solo números
+    if ((name === 'dni' || name === 'phone_number') && !/^\d*$/.test(value)) return;
+
+    setFormData({ ...formData, [name]: value });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    // Validación simple de celular
+    // Validaciones Frontend
+    if (formData.dni.length !== 8) {
+        showNotification('El DNI debe tener 8 dígitos exactos', 'warning');
+        setLoading(false);
+        return;
+    }
     if (formData.phone_number.length !== 9) {
         showNotification('El celular debe tener 9 dígitos', 'warning');
         setLoading(false);
@@ -35,15 +45,19 @@ export default function RegisterPage() {
     }
 
     try {
-      await apiClient.post('/auth/register', formData);
+      // Enviamos al backend (El backend se encarga de buscar el nombre en RENIEC)
+      const response = await apiClient.post('/auth/register', formData);
       
-      showNotification('¡Cuenta creada con éxito! Ahora inicia sesión.', 'success');
-      router.push('/login'); // Redirigir al login en lugar del dashboard directo
+      // Mostramos el nombre que encontró el sistema
+      const userName = response.name || 'Usuario';
+      showNotification(`¡Bienvenido ${userName}! Cuenta creada.`, 'success');
+      
+      router.push('/login'); 
 
     } catch (err: any) {
-      const msg = err.message.includes('already registered') 
-        ? 'Este correo o celular ya está registrado.' 
-        : err.message;
+      // Mensajes de error amigables
+      let msg = err.message;
+      if (msg.includes('already registered')) msg = 'Este DNI, correo o celular ya está registrado.';
       showNotification(msg, 'error');
     } finally {
       setLoading(false);
@@ -59,23 +73,25 @@ export default function RegisterPage() {
             <Smartphone className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2">Crear Cuenta</h1>
-          <p className="text-slate-400">Únete a Pixel Money</p>
+          <p className="text-slate-400">Ingresa tu DNI para validar tu identidad</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Nombre */}
+          
+          {/* DNI (Reemplaza al Nombre) */}
           <div className="relative group">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <User className="h-5 w-5 text-slate-500" />
+              <FileBadge className="h-5 w-5 text-slate-500" />
             </div>
             <input
-              name="name"
+              name="dni"
               type="text"
               required
-              placeholder="Nombre Completo"
+              placeholder="DNI (8 dígitos)"
               className="block w-full pl-11 pr-4 py-3.5 bg-slate-900/50 border border-slate-600 rounded-xl text-slate-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              value={formData.name}
+              value={formData.dni}
               onChange={handleChange}
+              maxLength={8}
             />
           </div>
 
@@ -131,7 +147,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2"
+            className="w-full py-4 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
           >
             {loading ? <Loader2 className="animate-spin" /> : 'Registrarse'}
           </button>

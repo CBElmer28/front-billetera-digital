@@ -1,17 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { v4 as uuidv4 } from 'uuid'; 
-import { apiClient } from '../../lib/api'; // Importamos tu cliente API optimizado
-
-const AVAILABLE_APPS = [
-  { id: 'LUCA', name: 'Billetera Luca' },
-  { id: 'PLAY MONEY', name: 'Play Money' },
-  { id: 'YAPE', name: 'Yape' },
-  { id: 'PLIN', name: 'Plin' },
-  { id: 'BCP', name: 'Banco BCP' },
-  { id: 'INTERBANK', name: 'Interbank' },
-];
+import { useState, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { X, Send, Shield, Loader2, Search, Lock } from 'lucide-react';
+import { apiClient } from '../../lib/api';
 
 interface ExternalTransferModalProps {
   isOpen: boolean;
@@ -25,204 +17,227 @@ export default function ExternalTransferModal({
   currentUserIdentifier 
 }: ExternalTransferModalProps) {
   
+  // Estados
+  const [step, setStep] = useState(1); // 1: Buscar, 2: Monto/Pass
+  const [phone, setPhone] = useState('');
+  const [destOptions, setDestOptions] = useState<string[]>([]);
+  const [destName, setDestName] = useState('');
+  const [selectedApp, setSelectedApp] = useState('');
+  
+  const [amount, setAmount] = useState('');
+  const [password, setPassword] = useState('');
+  const [description, setDescription] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Estado del formulario adaptado a tu JSON deseado
-  const [formData, setFormData] = useState({
-    toAppName: AVAILABLE_APPS[0].id, // Se mapeará a "to_bank"
-    toIdentifier: '',                // Se mapeará a "destination_phone_number"
-    amount: '',                      // Se mapeará a "amount"
-    description: ''                  // Se mapeará a "description"
-  });
+  // Reset al cerrar
+  useEffect(() => {
+    if (!isOpen) {
+        setStep(1);
+        setPhone('');
+        setAmount('');
+        setPassword('');
+        setError(null);
+        setSuccess(false);
+    }
+  }, [isOpen]);
 
-  if (!isOpen) return null;
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-    if (error) setError(null);
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  // PASO 1: Buscar en Directorio
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    // 1. Validaciones
-    if (!formData.toIdentifier || formData.toIdentifier.length < 9) {
-      setError("El número de celular debe tener al menos 9 dígitos.");
-      setLoading(false);
-      return;
-    }
-    
-    const amountVal = parseFloat(formData.amount);
-    if (isNaN(amountVal) || amountVal <= 0) {
-      setError("El monto debe ser mayor a 0.");
-      setLoading(false);
-      return;
+    if (phone.length < 9) {
+        setError("Celular inválido");
+        setLoading(false);
+        return;
     }
 
-    if (!formData.description.trim()) {
-      setError("Por favor ingresa una descripción para la transferencia.");
+    try {
+        const data: any = await apiClient.get(`/p2p/directory/${phone}`);
+        
+        if (!data.options || data.options.length === 0) {
+            setError("Este número no tiene billeteras asociadas.");
+            setLoading(false);
+            return;
+        }
+
+        setDestName(data.name || "Usuario");
+        setDestOptions(data.options);
+        setSelectedApp(data.options[0]); // Seleccionar el primero por defecto
+        setStep(2); // Avanzar
+
+    } catch (err: any) {
+        setError("Error al buscar destinatario.");
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  // PASO 2: Enviar Dinero
+  const handleTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    const amountVal = parseFloat(amount);
+    if (isNaN(amountVal) || amountVal <= 0) {
+      setError("Monto inválido.");
+      setLoading(false);
+      return;
+    }
+    if (!password) {
+      setError("Ingresa tu contraseña.");
       setLoading(false);
       return;
     }
 
     try {
-      // 2. Construcción del Payload EXACTO solicitado
-      const payload = {
-        to_bank: formData.toAppName,
-        destination_phone_number: formData.toIdentifier,
-        amount: amountVal,
-        description: formData.description
-      };
-
       const idempotencyKey = uuidv4();
 
-      console.log("🚀 Enviando a Gateway (/ledger/transfer-central):", payload);
+      // Payload compatible con el Gateway (inyecta user_id)
+      const payload = {
+        to_bank: selectedApp,
+        destination_phone_number: phone,
+        amount: amountVal,
+        description: description || "Transferencia Externa",
+        confirmationPassword: password // <--- ¡LA CLAVE!
+      };
 
-      // 3. Llamada usando apiClient
-      // El apiClient añadirá automáticamente:
-      // - Content-Type: application/json
-      // - Authorization: Bearer <token del localStorage>
       await apiClient.request('/ledger/transfer-central', {
         method: 'POST',
         body: JSON.stringify(payload),
-        headers: {
-          'Idempotency-Key': idempotencyKey // Header extra para seguridad
-        }
+        headers: { 'Idempotency-Key': idempotencyKey }
       });
 
-      // 4. Éxito
       setSuccess(true);
-      
       setTimeout(() => {
-        setSuccess(false);
         onClose();
         window.location.reload(); 
       }, 2000);
 
     } catch (err: any) {
-      console.error("Error API:", err);
-      // El apiClient ya procesa el error y lanza una excepción con el mensaje limpio
-      setError(err.message || "Ocurrió un error al procesar la transferencia.");
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  if (!isOpen) return null;
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="bg-[#121212] border border-gray-800 w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700">
         
         {/* Header */}
-        <div className="bg-[#1a1a1a] px-6 py-4 flex justify-between items-center border-b border-gray-800">
-          <h3 className="text-lg font-bold text-white tracking-tight">Transferencia Externa</h3>
-          <button 
-            onClick={onClose} 
-            className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-white/10 rounded-full"
-          >
-            ✕
+        <div className="bg-slate-100 dark:bg-slate-900 px-6 py-4 flex justify-between items-center border-b border-slate-200 dark:border-slate-700">
+          <h3 className="text-lg font-bold text-slate-800 dark:text-white">
+            Transferencia Interbancaria
+          </h3>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-800 dark:hover:text-white">
+            <X size={20} />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 overflow-y-auto">
+        <div className="p-6">
           {success ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center animate-in zoom-in duration-300">
-              <div className="w-20 h-20 bg-green-500/20 rounded-full flex items-center justify-center mb-6">
-                <svg className="w-10 h-10 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                </svg>
+            <div className="text-center py-8">
+              <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Send size={32} />
               </div>
-              <h4 className="text-xl font-bold text-white mb-2">¡Envío Exitoso!</h4>
-              <p className="text-gray-400">Tu transferencia ha sido procesada.</p>
+              <h3 className="text-xl font-bold text-slate-800 dark:text-white">¡Enviado!</h3>
+              <p className="text-slate-500">Tu dinero está en camino.</p>
             </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-5">
-              
-              {/* Selector de Banco (to_bank) */}
-              <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-medium">Banco Destino</label>
+          ) : step === 1 ? (
+            // --- FORMULARIO PASO 1: BUSCAR ---
+            <form onSubmit={handleSearch} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                  Celular del Destinatario
+                </label>
                 <div className="relative">
-                  <select
-                    name="toAppName"
-                    value={formData.toAppName}
-                    onChange={handleChange}
-                    className="w-full appearance-none bg-[#1E1E1E] border border-gray-700 text-white rounded-lg px-4 py-3 pr-8 focus:border-green-500 outline-none transition-all"
-                  >
-                    {AVAILABLE_APPS.map((app) => (
-                      <option key={app.id} value={app.id}>{app.name}</option>
-                    ))}
-                  </select>
-                  <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
-                    <svg className="fill-current h-4 w-4" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                  </div>
+                    <input
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g,''))}
+                        className="w-full pl-4 pr-10 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl"
+                        placeholder="999 000 111"
+                        maxLength={9}
+                    />
+                    <Search className="absolute right-3 top-3.5 text-slate-400 w-5 h-5" />
                 </div>
               </div>
-
-              {/* Celular (destination_phone_number) */}
-              <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-medium">Celular Destino</label>
-                <input
-                  type="text"
-                  name="toIdentifier"
-                  placeholder="Ej: 913942547"
-                  value={formData.toIdentifier}
-                  onChange={handleChange}
-                  maxLength={15}
-                  className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 focus:border-green-500 outline-none transition-all"
-                  required
-                />
-              </div>
-
-              {/* Monto (amount) */}
-              <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-medium">Monto (Soles)</label>
-                <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 text-lg">S/</span>
-                  <input
-                    type="number"
-                    name="amount"
-                    step="0.01"
-                    placeholder="0.00"
-                    min="0.01" 
-                    value={formData.amount}
-                    onChange={handleChange}
-                    className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 pl-10 text-lg font-medium focus:border-green-500 outline-none transition-all"
-                    required
-                  />
-                </div>
-              </div>
-
-              {/* Descripción (description) - NUEVO CAMPO */}
-              <div className="space-y-2">
-                <label className="text-sm text-gray-400 font-medium">Descripción</label>
-                <input
-                  type="text"
-                  name="description"
-                  placeholder="Ej: Pago por servicios..."
-                  value={formData.description}
-                  onChange={handleChange}
-                  maxLength={50}
-                  className="w-full bg-[#1E1E1E] border border-gray-700 text-white rounded-lg p-3 focus:border-green-500 outline-none transition-all"
-                  required
-                />
-              </div>
-
-              {error && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm animate-in fade-in">
-                  {error}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-3.5 rounded-lg transition-all disabled:opacity-50 mt-2 shadow-lg shadow-green-900/20 flex justify-center items-center gap-2"
+              {error && <p className="text-rose-500 text-sm text-center">{error}</p>}
+              <button 
+                disabled={loading || phone.length < 9}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold disabled:opacity-50 flex justify-center"
               >
-                {loading ? 'Procesando...' : 'Confirmar Envío'}
+                {loading ? <Loader2 className="animate-spin" /> : "Buscar Destino"}
+              </button>
+            </form>
+          ) : (
+            // --- FORMULARIO PASO 2: DATOS ---
+            <form onSubmit={handleTransfer} className="space-y-4 animate-in fade-in slide-in-from-right-4">
+              
+              {/* Info Destinatario */}
+              <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-xl flex items-center justify-between">
+                <div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Enviando a</p>
+                    <p className="font-bold text-slate-800 dark:text-white">{destName}</p>
+                    <p className="text-xs text-slate-500">{phone}</p>
+                </div>
+                <button type="button" onClick={() => setStep(1)} className="text-xs text-blue-500 underline">Cambiar</button>
+              </div>
+
+              {/* Selector de Banco */}
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Destino</label>
+                <select 
+                    value={selectedApp}
+                    onChange={(e) => setSelectedApp(e.target.value)}
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl"
+                >
+                    {destOptions.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Monto (S/)</label>
+                <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full p-3 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl font-mono text-lg"
+                    placeholder="0.00"
+                />
+              </div>
+
+              {/* Contraseña (Seguridad) */}
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Confirma con tu contraseña</label>
+                <div className="relative">
+                    <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full pl-10 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-300 dark:border-slate-600 rounded-xl"
+                        placeholder="••••••••"
+                    />
+                    <Lock className="absolute left-3 top-3.5 text-slate-400 w-4 h-4" />
+                </div>
+              </div>
+
+              {error && <p className="text-rose-500 text-sm text-center bg-rose-50 dark:bg-rose-900/20 p-2 rounded-lg">{error}</p>}
+
+              <button 
+                disabled={loading}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold disabled:opacity-50 flex justify-center gap-2"
+              >
+                {loading ? <Loader2 className="animate-spin" /> : <> <Shield size={18}/> Confirmar Envío </>}
               </button>
             </form>
           )}
