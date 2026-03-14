@@ -15,7 +15,9 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    fetch('https://pixel-money.koyeb.app/auth/me', {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL; 
+
+    fetch(`${apiUrl}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((res) => {
