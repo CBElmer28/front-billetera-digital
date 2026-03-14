@@ -1,10 +1,10 @@
 // 1. Apuntar a Producción (Gateway)
-const API_BASE_URL = 'https://pixel-money.koyeb.app'; 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080';
 
 class ApiClient {
   public async request(endpoint: string, options: RequestInit = {}) {
     
-    const token = typeof window !== 'undefined' ? localStorage.getItem('pixel-token') : null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
 
     const config: RequestInit = {
       ...options, 
